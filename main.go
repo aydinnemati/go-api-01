@@ -7,3 +7,5 @@ import (
 func main() {
 	fmt.Println("go-api-01 - mysql")
 }
+
+func createUser()
