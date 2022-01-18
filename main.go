@@ -74,12 +74,37 @@ type database struct {
 }
 
 func (database *database) getUsers(c *gin.Context) {
-	getUsername(database.db)
-	getUserlastname(database.db)
-	// ##################################################################### parse and return per user
+	chanelNames := make(chan []User)
+	chanelLastNames := make(chan []User)
+
+	var wg02 sync.WaitGroup
+	// wg02.Add(2)
+	go getUsername(database.db, wg02, chanelNames)
+	go getUserlastname(database.db, wg02, chanelLastNames)
+	usernames := <-chanelNames
+	userlasts := <-chanelLastNames
+
+	listUsers := []User{}
+
+	for _, name := range usernames {
+		for _, last := range userlasts {
+			if name.Id == last.Id {
+				user := User{
+					Id:        name.Id,
+					Firstname: name.Firstname,
+					Lastname:  last.Lastname,
+				}
+
+				listUsers = append(listUsers, user)
+
+			}
+		}
+	}
+	c.JSON(200, gin.H{"users": listUsers})
 }
 
-func getUsername(db *sql.DB) []User {
+func getUsername(db *sql.DB, wg sync.WaitGroup, chanelNames chan []User) {
+	wg.Add(1)
 	res, err := db.Query("SELECT * FROM usernames")
 	if err != nil {
 		log.Fatal(err)
@@ -97,27 +122,31 @@ func getUsername(db *sql.DB) []User {
 		// fmt.Printf("%v\n", user)
 	}
 	fmt.Println(usersnames)
-	return usersnames
+	chanelNames <- usersnames
+	wg.Done()
 }
 
-func getUserlastname(db *sql.DB) []User {
+func getUserlastname(db *sql.DB, wg sync.WaitGroup, chanelLastNames chan []User) {
+	wg.Add(1)
 	res, err := db.Query("SELECT * FROM userslastname")
 	if err != nil {
 		log.Fatal(err)
 	}
-	usersnames := []User{}
+	userslastname := []User{}
 	for res.Next() {
 
 		var user User
-		err := res.Scan(&user.Id, &user.Firstname)
+		err := res.Scan(&user.Id, &user.Lastname)
 
 		if err != nil {
 			log.Fatal(err)
 		}
-		usersnames = append(usersnames, user)
+		userslastname = append(userslastname, user)
 		// fmt.Printf("%v\n", user)
 	}
-	return usersnames
+	// fmt.Println(userslastname)
+	chanelLastNames <- userslastname
+	wg.Done()
 }
 
 func (database *database) addUser(c *gin.Context) {
@@ -133,14 +162,14 @@ func (database *database) addUser(c *gin.Context) {
 	} else {
 		// fmt.Println(user.Firstname)
 		var wg01 sync.WaitGroup
-		chanel01 := make(chan bool)
+		// chanel01 := make(chan bool)
 		creator := checkIfexists(db, user.Id, user.Firstname, user.Lastname)
-		fmt.Println("==========================")
-		fmt.Println(creator)
-		fmt.Println("==========================")
+		// fmt.Println("==========================")
+		// fmt.Println(creator)
+		// fmt.Println("==========================")
 		if creator {
 			// fmt.Println(creator)
-			go addUsername(database.db, user.Id, user.Firstname, wg01, chanel01)
+			go addUsername(database.db, user.Id, user.Firstname, wg01)
 			go addUserLastname(database.db, user.Id, user.Lastname, wg01)
 			wg01.Wait()
 			c.JSON(200, gin.H{"user": user})
@@ -153,7 +182,7 @@ func (database *database) addUser(c *gin.Context) {
 
 }
 
-func addUsername(db *sql.DB, userid int64, username string, wg sync.WaitGroup, chanel chan bool) {
+func addUsername(db *sql.DB, userid int64, username string, wg sync.WaitGroup) {
 	wg.Add(1)
 	sqlcommand := fmt.Sprintf("INSERT INTO usernames (id, firstname) VALUES (%d, '%v' )", userid, username)
 	_, err := db.Query(sqlcommand)
@@ -161,7 +190,6 @@ func addUsername(db *sql.DB, userid int64, username string, wg sync.WaitGroup, c
 		fmt.Println(err)
 	}
 	wg.Done()
-	// fmt.Println(res)
 }
 
 func addUserLastname(db *sql.DB, userid int64, userlastname string, wg sync.WaitGroup) {
