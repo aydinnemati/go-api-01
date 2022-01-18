@@ -125,23 +125,32 @@ func (database *database) addUser(c *gin.Context) {
 	var user User
 	decoder := json.NewDecoder(c.Request.Body)
 	err := decoder.Decode(&user)
+	// fmt.Println(bodyuser)
+
 	if err != nil {
-		fmt.Printf("error %s", err)
-		c.JSON(501, gin.H{"error": err})
-	}
-	// fmt.Println(user.Firstname)
-	var wg01 sync.WaitGroup
-	chanel01 := make(chan bool)
-	if checkIfexists(db, user.Id, user.Firstname) {
-
-		go addUsername(database.db, user.Id, user.Firstname, wg01, chanel01)
-		go addUserLastname(database.db, user.Id, user.Lastname, wg01)
-		wg01.Wait()
-
+		// fmt.Printf("error %s", err)
+		c.JSON(400, gin.H{"error": err})
 	} else {
-		c.Error(errors.New("user is existed"))
+		// fmt.Println(user.Firstname)
+		var wg01 sync.WaitGroup
+		chanel01 := make(chan bool)
+		creator := checkIfexists(db, user.Id, user.Firstname, user.Lastname)
+		fmt.Println("==========================")
+		fmt.Println(creator)
+		fmt.Println("==========================")
+		if creator {
+			// fmt.Println(creator)
+			go addUsername(database.db, user.Id, user.Firstname, wg01, chanel01)
+			go addUserLastname(database.db, user.Id, user.Lastname, wg01)
+			wg01.Wait()
+			c.JSON(200, gin.H{"user": user})
+		} else {
+			errror := c.Error(errors.New("user is existed"))
+			// c.JSON(400, gin.H{"error": user})
+			c.JSON(400, errror)
+		}
 	}
-	c.JSON(200, gin.H{"user": user})
+
 }
 
 func addUsername(db *sql.DB, userid int64, username string, wg sync.WaitGroup, chanel chan bool) {
@@ -167,16 +176,16 @@ func addUserLastname(db *sql.DB, userid int64, userlastname string, wg sync.Wait
 
 }
 
-func checkIfexists(db *sql.DB, userid int64, username string) bool {
-	sqlcommand := fmt.Sprintf("SELECT * FROM usernames WHERE firstname='%v';", username)
-	var id int64
-	var name string
+func checkIfexists(db *sql.DB, userid int64, username string, userlastname string) bool {
+	sqlcommand := fmt.Sprintf("SELECT COUNT(*) FROM usernames WHERE firstname='%v';", username)
+	var count int
 	row := db.QueryRow(sqlcommand)
-	row.Scan(&id, &name)
-	switch {
-	case id != userid && name != username:
+	row.Scan(&count)
+	// fmt.Println(count)
+
+	if count == 0 && userlastname != "" && username != "" && userid != 0 {
 		return true
-	default:
+	} else {
 		return false
 	}
 }
